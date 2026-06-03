@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import {
   Play, Pause, Plus, Trash2, Download, Activity, Zap, Waves,
   Sun, Moon, RotateCcw, Eye, EyeOff, Sigma, LayoutGrid, Gauge,
-  Table, AlertTriangle
+  AlertTriangle
 } from "lucide-react";
 
 /* =====================================================================
@@ -17,9 +17,9 @@ const TWO_PI = Math.PI * 2;
 
 const WAVE_TYPES = [
   { id: "sine", label: "正弦" },
-  { id: "square", label: "方波" },
-  { id: "triangle", label: "三角" },
-  { id: "sawtooth", label: "锯齿" },
+  { id: "cosine", label: "余弦" },
+  { id: "tangent", label: "正切" },
+  { id: "cotangent", label: "余切" },
 ];
 
 const PALETTE = ["#2DE2E6", "#F5D90A", "#FF5CA8", "#7CFF6B", "#FF8A3D", "#9B8CFF"];
@@ -31,15 +31,18 @@ const OPS = [
 ];
 
 /* ---------------- 信号生成 ---------------- */
+const TAN_CLAMP = 10;
 function waveValue(type, frac) {
-  // frac = 完整周期数 (f*t + phase/360)
-  const p = frac - Math.floor(frac); // 0..1
+  const angle = TWO_PI * frac;
   switch (type) {
-    case "square": return p < 0.5 ? 1 : -1;
-    case "sawtooth": return 2 * p - 1;
-    case "triangle": return p < 0.5 ? 4 * p - 1 : 3 - 4 * p;
+    case "cosine": return Math.cos(angle);
+    case "tangent": return Math.max(-TAN_CLAMP, Math.min(TAN_CLAMP, Math.tan(angle)));
+    case "cotangent": {
+      const s = Math.sin(angle);
+      return Math.abs(s) < 1e-9 ? TAN_CLAMP : Math.max(-TAN_CLAMP, Math.min(TAN_CLAMP, Math.cos(angle) / s));
+    }
     case "sine":
-    default: return Math.sin(TWO_PI * frac);
+    default: return Math.sin(angle);
   }
 }
 
@@ -512,7 +515,6 @@ export default function SignalGenerator() {
 
   /* =================== 渲染 =================== */
   const css = stylesheet(T);
-  const selCh = channels.find((c) => c.id === selected) || channels[0];
 
   return (
     <div style={{ ...sx.root, background: T.chassis, color: T.text }}>
@@ -664,67 +666,6 @@ export default function SignalGenerator() {
         </main>
       </div>
 
-      {/* 底部: 参数表 (#8) */}
-      <section style={{ ...sx.tableWrap, background: T.panel, borderColor: T.panelBorder }}>
-        <div style={sx.sideHead}>
-          <span style={sx.sectionTitle}><LayoutGrid size={14} /> 波形通道参数表 (UITable)</span>
-          <span style={{ ...sx.miniLabel, color: T.dim }}>双击数值可编辑 · 表格与图形联动</span>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={sx.table}>
-            <thead>
-              <tr style={{ color: T.dim }}>
-                {["", "编号", "类型", "幅值 (V)", `频率 (${freqUnit})`, `初相 (${phaseUnit === "deg" ? "°" : "rad"})`, "可见", "操作"].map((h, i) => (
-                  <th key={i} style={{ ...sx.th, borderColor: T.panelBorder }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {channels.map((c) => (
-                <tr key={c.id}
-                  onClick={() => setSelected(c.id)}
-                  style={{ background: c.id === selected ? (themeName === "dark" ? "rgba(54,226,154,0.08)" : "rgba(15,157,99,0.08)") : "transparent", cursor: "pointer" }}>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder }}>
-                    <span style={{ ...sx.swatch, background: c.color }} />
-                  </td>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder, fontWeight: 700, color: c.color }}>{c.name}</td>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder }}>
-                    <select value={c.type} onChange={(e) => updateChannel(c.id, { type: e.target.value })}
-                      style={{ ...sx.tdSelect, color: T.text, borderColor: T.panelBorder }}>
-                      {WAVE_TYPES.map((w) => <option key={w.id} value={w.id} style={{ color: "#000" }}>{w.label}</option>)}
-                    </select>
-                  </td>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder }}>
-                    <EditCell value={c.amp.toFixed(2)} T={T}
-                      onCommit={(v) => updateChannel(c.id, { amp: parseFloat(v) })} />
-                  </td>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder }}>
-                    <EditCell value={dispFreq(c.freq).toFixed(2)} T={T}
-                      onCommit={(v) => updateChannel(c.id, { freq: fromFreq(parseFloat(v)) })} />
-                  </td>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder }}>
-                    <EditCell value={dispPhase(c.phase).toFixed(phaseUnit === "deg" ? 0 : 2)} T={T}
-                      onCommit={(v) => updateChannel(c.id, { phase: fromPhase(parseFloat(v)) })} />
-                  </td>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder, textAlign: "center" }}>
-                    <button onClick={(e) => { e.stopPropagation(); updateChannel(c.id, { visible: !c.visible }); }}
-                      style={{ ...sx.miniIcon, color: c.visible ? T.accent : T.faint }}>
-                      {c.visible ? <Eye size={15} /> : <EyeOff size={15} />}
-                    </button>
-                  </td>
-                  <td style={{ ...sx.td, borderColor: T.panelBorder, textAlign: "center" }}>
-                    <button onClick={(e) => { e.stopPropagation(); removeChannel(c.id); }}
-                      style={{ ...sx.miniIcon, color: T.danger }} title="删除选中行">
-                      <Trash2 size={15} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
       {/* 输入验证提示 (#6) */}
       {toast && (
         <div style={{
@@ -790,13 +731,32 @@ function ChannelCard({ c, T, selected, freqUnit, phaseUnit, dispFreq, fromFreq, 
   );
 }
 
-/* 滑块 */
+/* 滑块 (点击数值可直接编辑) */
 function Knob({ T, color, label, unit, min, max, step, value, display, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(display);
+  const commit = () => {
+    setEditing(false);
+    const n = parseFloat(draft);
+    if (!isNaN(n)) onChange(Math.max(min, Math.min(max, n)));
+  };
   return (
     <div style={sx.knobRow}>
       <div style={sx.knobTop}>
         <span style={{ ...sx.knobLabel, color: T.dim }}>{label}</span>
-        <span style={{ ...sx.knobVal, color: T.text }}>{display}<small style={{ color: T.dim, marginLeft: 2 }}>{unit}</small></span>
+        {editing ? (
+          <input autoFocus value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+            onClick={(e) => e.stopPropagation()}
+            style={{ ...sx.knobInput, color: T.text, borderColor: color }} />
+        ) : (
+          <span onClick={(e) => { e.stopPropagation(); setDraft(display); setEditing(true); }}
+            style={{ ...sx.knobVal, color: T.text, cursor: "text", borderBottom: `1px dotted ${T.faint}` }}>
+            {display}<small style={{ color: T.dim, marginLeft: 2 }}>{unit}</small>
+          </span>
+        )}
       </div>
       <input type="range" className="sg-range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
@@ -818,26 +778,6 @@ function Readout({ T, label, value, unit }) {
   );
 }
 
-/* 表格可编辑单元格 */
-function EditCell({ value, onCommit, T }) {
-  const [editing, setEditing] = useState(false);
-  const [v, setV] = useState(value);
-  useEffect(() => { if (!editing) setV(value); }, [value, editing]);
-  if (editing) {
-    return (
-      <input autoFocus value={v}
-        onChange={(e) => setV(e.target.value)}
-        onBlur={() => { setEditing(false); onCommit(v); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { setEditing(false); onCommit(v); } if (e.key === "Escape") setEditing(false); }}
-        onClick={(e) => e.stopPropagation()}
-        style={{ ...sx.cellInput, color: T.text, borderColor: T.accent }} />
-    );
-  }
-  return (
-    <span onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
-      style={{ ...sx.cellText }}>{value}</span>
-  );
-}
 
 /* ---------------- 样式 ---------------- */
 function stylesheet(T) {
@@ -891,7 +831,8 @@ const sx = {
   knobRow: { display: "flex", flexDirection: "column", gap: 4 },
   knobTop: { display: "flex", justifyContent: "space-between", alignItems: "baseline" },
   knobLabel: { fontSize: 11.5, letterSpacing: "0.04em" },
-  knobVal: { fontSize: 13, fontFamily: FONT_MONO, fontWeight: 700 },
+  knobVal: { fontSize: 13, fontFamily: FONT_MONO, fontWeight: 700, padding: "1px 4px", borderRadius: 4 },
+  knobInput: { width: 64, background: "transparent", border: "1px solid", borderRadius: 6, padding: "2px 6px", fontFamily: FONT_MONO, fontSize: 13, fontWeight: 700, outline: "none" },
 
   globalBox: { borderTop: "1px dashed", paddingTop: 12, display: "flex", flexDirection: "column", gap: 11, marginTop: "auto" },
   fieldRow: { display: "flex", flexDirection: "column", gap: 5, flex: 1 },
@@ -921,15 +862,6 @@ const sx = {
   exportRow: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   exportBtn: { display: "flex", alignItems: "center", gap: 6, border: "1px solid", background: "transparent", borderRadius: 9, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: FONT_DISPLAY },
   tag: { marginLeft: "auto", fontSize: 11, border: "1px dashed", borderRadius: 20, padding: "4px 12px", letterSpacing: "0.05em", fontFamily: FONT_MONO },
-
-  tableWrap: { borderRadius: 14, border: "1px solid", padding: 14, display: "flex", flexDirection: "column", gap: 10 },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 620 },
-  th: { textAlign: "left", padding: "7px 10px", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1px solid" },
-  td: { padding: "6px 10px", borderBottom: "1px solid", fontFamily: FONT_MONO, fontSize: 12.5 },
-  swatch: { display: "inline-block", width: 16, height: 16, borderRadius: 4 },
-  tdSelect: { background: "transparent", border: "1px solid", borderRadius: 6, padding: "3px 6px", fontSize: 12, cursor: "pointer", fontFamily: FONT_DISPLAY },
-  cellText: { padding: "2px 6px", borderRadius: 5, cursor: "text", borderBottom: "1px dotted rgba(127,127,127,0.4)" },
-  cellInput: { width: 70, background: "transparent", border: "1px solid", borderRadius: 6, padding: "3px 6px", fontFamily: FONT_MONO, fontSize: 12.5, outline: "none" },
 
   toast: { position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 8, padding: "11px 18px", borderRadius: 10, fontWeight: 600, fontSize: 13, boxShadow: "0 8px 30px rgba(0,0,0,0.4)", zIndex: 50, fontFamily: FONT_DISPLAY },
 };
