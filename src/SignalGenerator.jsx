@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import {
   Play, Pause, Plus, Trash2, Download, Activity, Zap, Waves,
   Sun, Moon, RotateCcw, Eye, EyeOff, Sigma, LayoutGrid, Gauge,
-  AlertTriangle
+  Table, AlertTriangle
 } from "lucide-react";
 
 /* =====================================================================
