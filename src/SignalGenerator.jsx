@@ -25,9 +25,9 @@ const WAVE_TYPES = [
 const PALETTE = ["#2DE2E6", "#F5D90A", "#FF5CA8", "#7CFF6B", "#FF8A3D", "#9B8CFF"];
 
 const OPS = [
-  { id: "add", label: "叠加 Σ", sym: "+" },
-  { id: "multiply", label: "调幅 ×", sym: "×" },
-  { id: "subtract", label: "差值 −", sym: "−" },
+  { id: "add", label: "叠加（Σ）", sym: "+" },
+  { id: "multiply", label: "调幅（×）", sym: "×" },
+  { id: "subtract", label: "差值（−）", sym: "−" },
 ];
 
 /* ---------------- 信号生成 ---------------- */
@@ -205,18 +205,18 @@ export default function SignalGenerator() {
       if (c.id !== id) return c;
       const next = { ...c, ...patch };
       if ("amp" in patch) {
-        if (isNaN(next.amp)) { flash("幅值必须为数字"); return c; }
-        if (next.amp < 0) { flash("幅值不能为负, 已置 0"); next.amp = 0; }
-        if (next.amp > 10) { flash("幅值上限 10 V, 已限制"); next.amp = 10; }
+        if (isNaN(next.amp)) { flash("幅值输入无效：请输入有效数字（如 5、220、380）"); return c; }
+        if (next.amp < 0) { flash("幅值不能为负值：幅值表示信号振幅，已自动置为 0 V"); next.amp = 0; }
+        if (next.amp > 1000) { flash("幅值超出上限：最大允许 1000 V，已自动限制"); next.amp = 1000; }
       }
       if ("freq" in patch) {
-        if (isNaN(next.freq)) { flash("频率必须为数字"); return c; }
-        if (next.freq <= 0) { flash("频率必须 > 0, 已置 0.1"); next.freq = 0.1; }
-        if (next.freq > 500) { flash("频率上限 500 Hz, 已限制"); next.freq = 500; }
+        if (isNaN(next.freq)) { flash("频率输入无效：请输入有效数字（如 50、100、440）"); return c; }
+        if (next.freq <= 0) { flash("频率必须为正数：频率不能为 0 或负值，已自动置为 0.1 Hz"); next.freq = 0.1; }
+        if (next.freq > 500) { flash("频率超出上限：最大允许 500 Hz，已自动限制"); next.freq = 500; }
       }
       if ("phase" in patch) {
-        if (isNaN(next.phase)) { flash("相位必须为数字"); return c; }
-        next.phase = ((next.phase % 360) + 360) % 360; // 归化 0~360
+        if (isNaN(next.phase)) { flash("相位输入无效：请输入有效数字（如 0、90、120）"); return c; }
+        next.phase = ((next.phase % 360) + 360) % 360;
       }
       return next;
     }));
@@ -319,13 +319,11 @@ export default function SignalGenerator() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    // 屏幕底色
     ctx.fillStyle = T.screen;
     ctx.fillRect(0, 0, w, h);
-    const padL = 8, padR = 8, padT = 8, padB = 8;
+    const padL = 58, padR = 14, padT = 14, padB = 34;
     const gx = padL, gy = padT, gw = w - padL - padR, gh = h - padT - padB;
 
-    // 网格
     const cols = 12, rows = 8;
     ctx.lineWidth = 1;
     for (let i = 0; i <= cols; i++) {
@@ -339,20 +337,81 @@ export default function SignalGenerator() {
       ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx + gw, y); ctx.stroke();
     }
 
+    function niceStep(range, targetTicks) {
+      const raw = range / targetTicks;
+      const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+      const norm = raw / mag;
+      let nice;
+      if (norm <= 1.5) nice = 1;
+      else if (norm <= 3) nice = 2;
+      else if (norm <= 7) nice = 5;
+      else nice = 10;
+      return nice * mag;
+    }
+
+    function drawAxisTicks(ctx, gx, gy, gw, gh, xMin, xMax, yMin, yMax, xUnit, yUnit) {
+      ctx.font = "10px 'Share Tech Mono', monospace";
+      ctx.fillStyle = T.dim;
+      ctx.strokeStyle = T.grid;
+      ctx.lineWidth = 1;
+
+      const xRange = xMax - xMin;
+      const xStep = niceStep(xRange, 8);
+      const xStart = Math.ceil(xMin / xStep) * xStep;
+      ctx.textAlign = "center";
+      for (let v = xStart; v <= xMax + xStep * 0.001; v += xStep) {
+        const px = gx + ((v - xMin) / xRange) * gw;
+        if (px < gx - 1 || px > gx + gw + 1) continue;
+        ctx.beginPath(); ctx.moveTo(px, gy + gh); ctx.lineTo(px, gy + gh + 4); ctx.stroke();
+        let label;
+        if (Math.abs(v) < xStep * 0.01) label = "0";
+        else if (Math.abs(v) >= 1000) label = (v / 1000).toFixed(1) + "k";
+        else if (Math.abs(v) < 0.01) label = (v * 1000).toFixed(1) + "m";
+        else label = parseFloat(v.toPrecision(4)).toString();
+        ctx.fillText(label, px, gy + gh + 15);
+      }
+      ctx.fillStyle = T.dim;
+      ctx.textAlign = "center";
+      ctx.fillText(xUnit, gx + gw / 2, gy + gh + 28);
+
+      const yRange = yMax - yMin;
+      const yStep = niceStep(yRange, 6);
+      const yStart = Math.ceil(yMin / yStep) * yStep;
+      ctx.textAlign = "right";
+      for (let v = yStart; v <= yMax + yStep * 0.001; v += yStep) {
+        const py = gy + gh - ((v - yMin) / yRange) * gh;
+        if (py < gy - 1 || py > gy + gh + 1) continue;
+        ctx.beginPath(); ctx.moveTo(gx - 4, py); ctx.lineTo(gx, py); ctx.stroke();
+        let label;
+        if (Math.abs(v) < yStep * 0.01) label = "0";
+        else if (Math.abs(v) >= 1000) label = (v / 1000).toFixed(1) + "k";
+        else label = parseFloat(v.toPrecision(4)).toString();
+        ctx.fillText(label, gx - 7, py + 3.5);
+      }
+      ctx.save();
+      ctx.translate(12, gy + gh / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.fillText(yUnit, 0, 0);
+      ctx.restore();
+    }
+
     const d = dataRef.current;
     if (mode === "xy") return drawXY(ctx, d, gx, gy, gw, gh);
     if (mode === "fft") return drawFFT(ctx, gx, gy, gw, gh);
 
     // ---- 时域 ----
     const amax = Math.max(0.5, st.vpp / 2, ...d.traces.filter(c => c.visible).map(c => c.amp));
-    const yScale = (gh / 2) / (amax * 1.15);
+    const yRange = amax * 1.15;
+    const yScale = (gh / 2) / yRange;
     const ymid = gy + gh / 2;
     const toY = (v) => ymid - v * yScale;
     const toX = (i) => gx + (gw * i) / (N - 1);
     const sweep = sweepRef.current;
     const lastIdx = Math.floor((N - 1) * sweep);
 
-    // 各通道
+    drawAxisTicks(ctx, gx, gy, gw, gh, 0, tWin, -yRange, yRange, "时间/s", "电压/V");
+
     for (const c of d.traces) {
       if (!c.visible) continue;
       ctx.save();
@@ -366,7 +425,6 @@ export default function SignalGenerator() {
       }
       ctx.stroke(); ctx.restore();
     }
-    // 合成波 (加粗虚线 #9)
     ctx.save();
     ctx.lineWidth = 2.4; ctx.strokeStyle = T.sumColor;
     ctx.setLineDash([7, 4]);
@@ -378,7 +436,6 @@ export default function SignalGenerator() {
     }
     ctx.stroke(); ctx.restore();
 
-    // 扫描光点
     if (sweep < 1) {
       const x = toX(lastIdx), y = toY(d.sum[lastIdx]);
       ctx.fillStyle = T.accent;
@@ -387,10 +444,8 @@ export default function SignalGenerator() {
       ctx.shadowBlur = 0;
     }
 
-    // 时域标注 (#5)
     if (annot && sweep >= 1) {
       ctx.font = "11px 'Share Tech Mono', monospace";
-      // RMS 线
       ctx.strokeStyle = T.accent; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
       ctx.globalAlpha = 0.8;
       [st.rms, -st.rms].forEach((v) => {
@@ -400,7 +455,6 @@ export default function SignalGenerator() {
       ctx.setLineDash([]); ctx.globalAlpha = 1;
       ctx.fillStyle = T.accent;
       ctx.fillText(`RMS ${st.rms.toFixed(2)}V`, gx + 6, toY(st.rms) - 5);
-      // Vpp 标尺
       const bx = gx + gw - 14;
       ctx.strokeStyle = T.text; ctx.lineWidth = 1; ctx.globalAlpha = 0.9;
       ctx.beginPath();
@@ -418,21 +472,18 @@ export default function SignalGenerator() {
       ctx.globalAlpha = 1;
     }
 
-    // 角标
-    ctx.fillStyle = T.dim; ctx.font = "10px 'Share Tech Mono', monospace";
-    ctx.textAlign = "left";
-    ctx.fillText(`时基 ${(tWin * 1000 / 12).toFixed(1)} ms/格`, gx + 4, gy + gh - 6);
-    ctx.fillText(`${(amax * 1.15 / 4).toFixed(2)} V/格`, gx + 4, gy + 12);
-
     function drawFFT(ctx, gx, gy, gw, gh) {
       const f = fft;
       const fmaxShow = Math.min(fs / 2, Math.max(f.peakFreq * 4, 60));
       const nShow = Math.max(2, Math.floor((fmaxShow / (fs / 2)) * f.freqs.length));
       let mmax = 1e-6;
       for (let i = 1; i < nShow; i++) mmax = Math.max(mmax, f.mags[i]);
+
+      drawAxisTicks(ctx, gx, gy, gw, gh, 0, fmaxShow, 0, mmax, "频率/Hz", "幅值/V");
+
       const bw = gw / nShow;
       for (let i = 1; i < nShow; i++) {
-        const bh = (f.mags[i] / mmax) * (gh - 20);
+        const bh = (f.mags[i] / mmax) * gh;
         const x = gx + (gw * i) / nShow;
         const grad = ctx.createLinearGradient(0, gy + gh, 0, gy + gh - bh);
         grad.addColorStop(0, T.accent + "30");
@@ -440,20 +491,13 @@ export default function SignalGenerator() {
         ctx.fillStyle = grad;
         ctx.fillRect(x, gy + gh - bh, Math.max(1, bw * 0.7), bh);
       }
-      // 峰值标注
       if (themeName === "dark") { ctx.shadowColor = T.accent; ctx.shadowBlur = 8; }
-      const peakX = gx + gw * (f.peakFreq / fmaxShow);
       ctx.shadowBlur = 0;
       ctx.fillStyle = T.text; ctx.font = "11px 'Share Tech Mono', monospace";
       ctx.textAlign = "center";
+      const peakX = gx + gw * (f.peakFreq / fmaxShow);
       if (peakX < gx + gw) ctx.fillText(`主频 ${f.peakFreq.toFixed(1)} Hz`, Math.min(peakX, gx + gw - 40), gy + 16);
-      ctx.fillStyle = T.dim; ctx.font = "10px 'Share Tech Mono', monospace";
       ctx.textAlign = "left";
-      ctx.fillText("0 Hz", gx + 2, gy + gh - 4);
-      ctx.textAlign = "right";
-      ctx.fillText(`${fmaxShow.toFixed(0)} Hz`, gx + gw - 2, gy + gh - 4);
-      ctx.textAlign = "left";
-      ctx.fillText("幅值谱 |FFT|", gx + 4, gy + 12);
     }
 
     function drawXY(ctx, d, gx, gy, gw, gh) {
@@ -464,24 +508,27 @@ export default function SignalGenerator() {
         ctx.fillText("李萨如图形需要至少 2 路可见波形", gx + gw / 2, gy + gh / 2);
         ctx.textAlign = "left"; return;
       }
-      const cx = vis[0], cy = vis[1];
-      const ax = Math.max(0.5, cx.amp), ay = Math.max(0.5, cy.amp);
-      const sx = (gw / 2) / (ax * 1.15), sy = (gh / 2) / (ay * 1.15);
+      const chX = vis[0], chY = vis[1];
+      const ax = Math.max(0.5, chX.amp), ay = Math.max(0.5, chY.amp);
+      const xRange = ax * 1.15, yRangeXY = ay * 1.15;
+      const scX = (gw / 2) / xRange, scY = (gh / 2) / yRangeXY;
       const ox = gx + gw / 2, oy = gy + gh / 2;
+
+      drawAxisTicks(ctx, gx, gy, gw, gh, -xRange, xRange, -yRangeXY, yRangeXY,
+        `${chX.name} 电压/V`, `${chY.name} 电压/V`);
+
       ctx.save();
       ctx.lineWidth = 1.8; ctx.strokeStyle = T.accent;
       ctx.shadowColor = T.accent; ctx.shadowBlur = themeName === "dark" ? 8 : 0;
       ctx.beginPath();
       for (let i = 0; i < N; i++) {
-        const x = ox + cx.data[i] * sx, y = oy - cy.data[i] * sy;
+        const x = ox + chX.data[i] * scX, y = oy - chY.data[i] * scY;
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       }
       ctx.stroke(); ctx.restore();
-      ctx.fillStyle = T.dim; ctx.font = "10px 'Share Tech Mono', monospace";
-      ctx.textAlign = "right"; ctx.fillText(`X: ${cx.name}`, gx + gw - 4, gy + gh - 6);
-      ctx.textAlign = "left"; ctx.fillText(`Y: ${cy.name}`, gx + 4, gy + 12);
-      const ratio = (cy.freq / cx.freq).toFixed(2);
-      ctx.fillStyle = T.text; ctx.textAlign = "center";
+      const ratio = (chY.freq / chX.freq).toFixed(2);
+      ctx.fillStyle = T.text; ctx.font = "11px 'Share Tech Mono', monospace";
+      ctx.textAlign = "center";
       ctx.fillText(`频率比 ${ratio} : 1`, gx + gw / 2, gy + 14);
       ctx.textAlign = "left";
     }
@@ -613,9 +660,9 @@ export default function SignalGenerator() {
           <div style={{ ...sx.tabsRow }}>
             <div style={sx.tabs}>
               {[
-                { id: "time", label: "时域波形", icon: <Waves size={14} /> },
-                { id: "fft", label: "频谱 FFT", icon: <Sigma size={14} /> },
-                { id: "xy", label: "李萨如 XY", icon: <LayoutGrid size={14} /> },
+                { id: "time", label: "时域波形图", icon: <Waves size={14} /> },
+                { id: "fft", label: "频谱FFT图", icon: <Sigma size={14} /> },
+                { id: "xy", label: "李萨如图", icon: <LayoutGrid size={14} /> },
               ].map((t) => (
                 <button key={t.id} onClick={() => setMode(t.id)}
                   style={{
@@ -719,7 +766,7 @@ function ChannelCard({ c, T, selected, freqUnit, phaseUnit, dispFreq, fromFreq, 
         ))}
       </div>
 
-      <Knob T={T} color={c.color} label="幅值" unit="V" min={0} max={10} step={0.1}
+      <Knob T={T} color={c.color} label="幅值" unit="V" min={0} max={1000} step={0.1}
         value={c.amp} display={c.amp.toFixed(1)} onChange={(v) => onChange({ amp: v })} />
       <Knob T={T} color={c.color} label="频率" unit={freqUnit} min={0.1} max={500} step={0.1}
         value={c.freq} display={dispFreq(c.freq).toFixed(freqUnit === "Hz" ? 1 : 1)}
